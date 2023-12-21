@@ -1,19 +1,20 @@
 import taichi as ti
+import numpy as np
 
 ti.init(arch=ti.cpu)
 
 @ti.data_oriented
 class Balls:
-	def __init__(self):
-		self.n_ball = 100
-		self.n_wall = 100
+	def __init__(self, ball_row: int, ball_col: int, wall_row: int, wall_col: int):
+		self.n_ball = ball_row * ball_col
+		self.n_wall = wall_row * wall_col
 		self.max_collision = 100000
 		self.unit_length = 1.
-		self.r_ball = self.unit_length / 620
-		self.r_wall = 1.5 * self.r_ball
-		self.stiffness = 1e3
-		self.damping = 1.
-		self.gravity = 9.8
+		self.r_ball = self.unit_length / (ball_col * 2 + 1)
+		self.r_wall = self.unit_length / (wall_col - .5) / 8
+		self.stiffness = 1e5
+		self.damping = 5.
+		self.gravity = 1.
 		self.mass = 1.
 		
 		self.min_corner = ti.Vector([0., 0.])
@@ -21,7 +22,7 @@ class Balls:
 
 		self.positions = ti.Vector.field(2, dtype=float, shape=(self.n_ball,))
 		self.velocities = ti.Vector.field(2, dtype=float, shape=(self.n_ball,))
-		self.colors = ti.Vector.field(3, dtype=ti.uint8, shape=(self.n_ball,))
+		self.colors = ti.Vector.field(3, dtype=float, shape=(self.n_ball,))
 		self.wall_pos = ti.Vector.field(2, dtype=float, shape=(self.n_wall,))
 		
 		self.xk = ti.ndarray(dtype=float, shape=(2 * self.n_ball,))
@@ -29,6 +30,23 @@ class Balls:
 		self.rhs = ti.ndarray(dtype=float, shape=(2 * self.n_ball,))
 		self.collision_pairs = ti.Vector.field(2, dtype=int, shape=(self.max_collision,))
 		self.cnt_collision = ti.field(dtype=int, shape=())
+		
+		self.set_initial_condition(ball_row, ball_col, wall_row, wall_col)
+	
+	@ti.kernel
+	def set_initial_condition(self, ball_row: int, ball_col: int, wall_row: int, wall_col: int):
+		# Placing balls
+		color_list = ti.Matrix([[255, 0, 0], [255, 165, 0], [255, 255, 0], [0, 255, 0], [0, 0, 255], [160, 32, 240]], dt=float) / 255.
+		for i in range(ball_row):
+			for j in range(ball_col):
+				self.positions[i * ball_col + j] = [self.min_corner[0] + self.r_ball * (1. if i % 2 == 0 else 2.) + j * 2. * self.r_ball, self.max_corner[1] - (self.r_ball + i * 3. ** .5 * self.r_ball)]
+				self.velocities[i * ball_col + j] = [0., 0.]
+				self.colors[i * ball_col + j] = color_list[i % len(color_list), :]
+		# Placing walls
+		spacing = self.unit_length / (wall_col - .5)
+		for i in range(wall_row):
+			for j in range(wall_col):
+				self.wall_pos[i * wall_col + j] = [self.min_corner[0] + (0. if i % 2 == 0 else spacing * .5) + j * spacing, self.max_corner[1] - (self.r_ball + ball_row * 3. ** .5 * self.r_ball + self.r_wall * 2. + i * 3 ** .5 * .5 * spacing)]
 	
 	@ti.kernel
 	def get_collision_pairs(self):
@@ -46,16 +64,16 @@ class Balls:
 				if (self.positions[i] - self.wall_pos[j]).norm() < self.r_wall + self.r_ball:
 					self.collision_pairs[self.cnt_collision[None]] = [i, j + self.n_ball]
 					self.cnt_collision[None] += 1
-			if self.positions[i][0] < self.min_corner[0]:
+			if self.positions[i][0] - self.r_ball < self.min_corner[0]:
 				self.collision_pairs[self.cnt_collision[None]] = [i, -1] # left boundary
 				self.cnt_collision[None] += 1
-			if self.positions[i][1] < self.min_corner[1]:
+			if self.positions[i][1] - self.r_ball < self.min_corner[1]:
 				self.collision_pairs[self.cnt_collision[None]] = [i, -2] # lower boundary
 				self.cnt_collision[None] += 1
-			if self.positions[i][0] > self.max_corner[0]:
+			if self.positions[i][0] + self.r_ball > self.max_corner[0]:
 				self.collision_pairs[self.cnt_collision[None]] = [i, -3] # right boundary
 				self.cnt_collision[None] += 1
-			if self.positions[i][1] > self.max_corner[1]:
+			if self.positions[i][1] + self.r_ball > self.max_corner[1]:
 				self.collision_pairs[self.cnt_collision[None]] = [i, -4] # upper boundary
 				self.cnt_collision[None] += 1
 		
@@ -69,86 +87,103 @@ class Balls:
 			yk[i * 2 + 1] = y[1]
 			rhs[i * 2] = -1. / dt / dt * self.mass * (xk[i * 2] - yk[i * 2])
 			rhs[i * 2 + 1] = -1. / dt / dt * self.mass * (xk[i * 2 + 1] - yk[i * 2 + 1])
-		for i in range(self.cnt_collision[None]):
-			a, b = self.collision_pairs[i]
-			f = ti.Vector([0., 0.])
-			if b == -1: # collision with left boundary
-				f += self.stiffness * (self.positions[a][0] - self.min_corner[0] - self.r_ball) * [-1, 0]
-			elif b == -2: # collision with lower boundary
-				f += self.stiffness * (self.positions[a][1] - self.min_corner[1] - self.r_ball) * [0, -1]
-			elif b == -3: # collision with right boundary
-				f += self.stiffness * (self.max_corner[0] - self.positions[a][0] - self.r_ball) * [1, 0]
-			elif b == -4: # collision with upper boundary
-				f += self.stiffness * (self.max_corner[1] - self.positions[a][1] - self.r_ball) * [0, 1]
-			elif b < self.n_ball: # collision with another ball
-				delta_x = self.positions[b] - self.positions[a]
-				f += self.stiffness * (delta_x.norm() - 2. * self.r_ball) * delta_x / delta_x.norm()
-				rhs[b * 2] -= f[0]
-				rhs[b * 2 + 1] -= f[1]
-			else: # collision with wall
-				delta_x = self.wall_pos[b - self.n_ball] - self.positions[a]
-				f += self.stiffness * (delta_x.norm() - self.r_ball - self.r_wall) * delta_x / delta_x.norm()
-			rhs[a * 2] += f[0]
-			rhs[a * 2 + 1] += f[1]
+		for _ in range(1):
+			for i in range(self.cnt_collision[None]):
+				a, b = self.collision_pairs[i]
+				f = ti.Vector([0., 0.])
+				if b == -1: # collision with left boundary
+					f += self.stiffness * (self.positions[a][0] - self.min_corner[0] - self.r_ball) * [-1, 0]
+				elif b == -2: # collision with lower boundary
+					f += self.stiffness * (self.positions[a][1] - self.min_corner[1] - self.r_ball) * [0, -1]
+				elif b == -3: # collision with right boundary
+					f += self.stiffness * (self.max_corner[0] - self.positions[a][0] - self.r_ball) * [1, 0]
+				elif b == -4: # collision with upper boundary
+					f += self.stiffness * (self.max_corner[1] - self.positions[a][1] - self.r_ball) * [0, 1]
+				elif b < self.n_ball: # collision with another ball
+					delta_x = self.positions[b] - self.positions[a]
+					f += self.stiffness * (delta_x.norm() - 2. * self.r_ball) * delta_x / delta_x.norm()
+					rhs[b * 2] -= f[0]
+					rhs[b * 2 + 1] -= f[1]
+				else: # collision with wall
+					delta_x = self.wall_pos[b - self.n_ball] - self.positions[a]
+					f += self.stiffness * (delta_x.norm() - self.r_ball - self.r_wall) * delta_x / delta_x.norm()
+				rhs[a * 2] += f[0]
+				rhs[a * 2 + 1] += f[1]
 	
 	@ti.kernel
 	def build_matrix(self, dt: float, mat_builder: ti.types.sparse_matrix_builder()):
+		# 1 / dt ** 2 * self.mass
 		for i in range(2 * self.n_ball):
 			mat_builder[i, i] += self.mass / dt / dt
-		for i in range(self.cnt_collision[None]):
-			a, b = self.collision_pairs[i]
-			delta_x = ti.Vector([0., 0.])
-			rest_length = 0.
-			if b == -1: # collision with left boundary
-				delta_x += [self.positions[a][0] - self.min_corner[0], 0.]
-				rest_length += self.r_ball
-			elif b == -2: # collision with lower boundary
-				delta_x += [0., self.positions[a][1] - self.min_corner[0]]
-				rest_length += self.r_ball
-			elif b == -3: # collision with right boundary
-				delta_x += [self.positions[a][0] - self.max_corner[0], 0.]
-				rest_length += self.r_ball
-			elif b == -4: # collision with upper boundary
-				delta_x += [0., self.positions[a][1] - self.max_corner[0]]
-				rest_length += self.r_ball
-			elif b < self.n_ball: # collision with another ball
-				delta_x += self.positions[a] - self.positions[b]
-				rest_length += 2. * self.r_ball
-			else: # collision with wall
-				delta_x += self.positions[a] - self.positions[b - self.n_ball]
-				rest_length += self.r_ball + self.r_wall
-			outer_prod = ti.Matrix([[delta_x[0]], [delta_x[1]]]) @ ti.Matrix([[delta_x[0], delta_x[1]]]) / delta_x.norm() / delta_x.norm()
-			H_e = self.stiffness * outer_prod +\
-				self.stiffness * (1. - rest_length / delta_x.norm()) * (ti.Matrix([[1., 0.], [0., 1.]]) - outer_prod)
-			mat_builder[a * 2, a * 2] += H_e[0, 0]
-			mat_builder[a * 2, a * 2 + 1] += H_e[0, 1]
-			mat_builder[a * 2 + 1, a * 2] += H_e[1, 0]
-			mat_builder[a * 2 + 1, a * 2 + 1] += H_e[1, 1]
-			if 0 <= b < self.n_ball:
-				mat_builder[b * 2, b * 2] += H_e[0, 0]
-				mat_builder[b * 2, b * 2 + 1] += H_e[0, 1]
-				mat_builder[b * 2 + 1, b * 2] += H_e[1, 0]
-				mat_builder[b * 2 + 1, b * 2 + 1] += H_e[1, 1]
-				mat_builder[a * 2, b * 2] -= H_e[0, 0]
-				mat_builder[a * 2, b * 2 + 1] -= H_e[0, 1]
-				mat_builder[a * 2 + 1, b * 2] -= H_e[1, 0]
-				mat_builder[a * 2 + 1, b * 2 + 1] -= H_e[1, 1]
-				mat_builder[b * 2, a * 2] -= H_e[0, 0]
-				mat_builder[b * 2, a * 2 + 1] -= H_e[0, 1]
-				mat_builder[b * 2 + 1, a * 2] -= H_e[1, 0]
-				mat_builder[b * 2 + 1, a * 2 + 1] -= H_e[1, 1]
+		# Hessian of spring forces
+		for _ in range(1):
+			for i in range(self.cnt_collision[None]):
+				a, b = self.collision_pairs[i]
+				delta_x = ti.Vector([0., 0.])
+				rest_length = 0.
+				if b == -1: # collision with left boundary
+					delta_x += [self.positions[a][0] - self.min_corner[0], 0.]
+					rest_length += self.r_ball
+				elif b == -2: # collision with lower boundary
+					delta_x += [0., self.positions[a][1] - self.min_corner[1]]
+					rest_length += self.r_ball
+				elif b == -3: # collision with right boundary
+					delta_x += [self.positions[a][0] - self.max_corner[0], 0.]
+					rest_length += self.r_ball
+				elif b == -4: # collision with upper boundary
+					delta_x += [0., self.positions[a][1] - self.max_corner[1]]
+					rest_length += self.r_ball
+				elif b < self.n_ball: # collision with another ball
+					delta_x += self.positions[a] - self.positions[b]
+					rest_length += 2. * self.r_ball
+				else: # collision with wall
+					delta_x += self.positions[a] - self.wall_pos[b - self.n_ball]
+					rest_length += self.r_ball + self.r_wall
+				outer_prod = ti.Matrix([[delta_x[0]], [delta_x[1]]]) @ ti.Matrix([[delta_x[0], delta_x[1]]]) / delta_x.norm() / delta_x.norm()
+				H_e = self.stiffness * outer_prod +\
+					self.stiffness * (1. - rest_length / delta_x.norm()) * (ti.Matrix([[1., 0.], [0., 1.]]) - outer_prod)
+				mat_builder[a * 2, a * 2] += H_e[0, 0]
+				mat_builder[a * 2, a * 2 + 1] += H_e[0, 1]
+				mat_builder[a * 2 + 1, a * 2] += H_e[1, 0]
+				mat_builder[a * 2 + 1, a * 2 + 1] += H_e[1, 1]
+				if 0 <= b < self.n_ball:
+					mat_builder[b * 2, b * 2] += H_e[0, 0]
+					mat_builder[b * 2, b * 2 + 1] += H_e[0, 1]
+					mat_builder[b * 2 + 1, b * 2] += H_e[1, 0]
+					mat_builder[b * 2 + 1, b * 2 + 1] += H_e[1, 1]
+					mat_builder[a * 2, b * 2] -= H_e[0, 0]
+					mat_builder[a * 2, b * 2 + 1] -= H_e[0, 1]
+					mat_builder[a * 2 + 1, b * 2] -= H_e[1, 0]
+					mat_builder[a * 2 + 1, b * 2 + 1] -= H_e[1, 1]
+					mat_builder[b * 2, a * 2] -= H_e[0, 0]
+					mat_builder[b * 2, a * 2 + 1] -= H_e[0, 1]
+					mat_builder[b * 2 + 1, a * 2] -= H_e[1, 0]
+					mat_builder[b * 2 + 1, a * 2 + 1] -= H_e[1, 1]
+		# Damping
+		for _ in range(1):
+			for i in range(self.cnt_collision[None]):
+				a, b = self.collision_pairs[i]
+				mat_builder[a * 2, a * 2] += self.damping / dt
+				mat_builder[a * 2 + 1, a * 2 + 1] += self.damping / dt
+				if 0 <= b < self.n_ball:
+					mat_builder[b * 2, b * 2] += self.damping / dt
+					mat_builder[b * 2 + 1, b * 2 + 1] += self.damping / dt
+					mat_builder[a * 2, b * 2] -= self.damping / dt
+					mat_builder[a * 2 + 1, b * 2 + 1] -= self.damping / dt
+					mat_builder[b * 2, a * 2] -= self.damping / dt
+					mat_builder[b * 2 + 1, a * 2 + 1] -= self.damping / dt
 	
 	@ti.kernel
 	def update_states(self, dt: float, delta_pos: ti.types.ndarray()):
 		for i in range(self.n_ball):
-			delta_i = delta_pos[i * 2:i * 2 + 2]
+			delta_i = ti.Vector([delta_pos[i * 2], delta_pos[i * 2 + 1]])
 			self.positions[i] += delta_i
 			self.velocities[i] = delta_i / dt
 	
 	def advance(self, dt: float):
 		self.get_collision_pairs()
 		self.calculate_vectors(dt, self.xk, self.yk, self.rhs)
-		mat_builder = ti.linalg.SparseMatrixBuilder(2 * self.n_ball, 2 * self.n_ball)
+		mat_builder = ti.linalg.SparseMatrixBuilder(2 * self.n_ball, 2 * self.n_ball, max_num_triplets=24 * self.max_collision + 2 * self.n_ball)
 		self.build_matrix(dt, mat_builder)
 		mat = mat_builder.build()
 		solver = ti.linalg.SparseSolver(solver_type='LLT')
@@ -158,6 +193,33 @@ class Balls:
 		if not solver.info():
 			print('Warning: Failed to solve the linear system.')
 		self.update_states(dt, delta_pos)
+	
+	@ti.kernel
+	def get_max_time_step(self) -> float:
+		max_v = 1e-3
+		for i in range(self.n_ball):
+			max_v = max(max_v, self.velocities[i].norm())
+		return min(self.r_ball, self.r_wall) * .1 / max_v
 
-balls = Balls()
-balls.advance(1.)
+balls = Balls(5, 30, 5, 8)
+fps_limit = 50
+time_step = 1 / fps_limit
+
+win_size = 700
+window = ti.ui.Window(name='Ball trick', fps_limit=50, res=(win_size, win_size))
+canvas = window.get_canvas()
+
+while window.running:
+	canvas.set_background_color((0.067, 0.184, 0.255))
+	canvas.circles(balls.positions, balls.r_ball, per_vertex_color=balls.colors)
+	canvas.circles(balls.wall_pos, balls.r_wall)
+	window.show()
+	rest_t = time_step
+	while rest_t > 0.:
+		dt = balls.get_max_time_step()
+		if dt >= rest_t:
+			balls.advance(rest_t)
+			rest_t = 0.
+		else:
+			balls.advance(dt)
+			rest_t -= dt
