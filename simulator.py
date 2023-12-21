@@ -96,13 +96,68 @@ class Balls:
 		for i in range(2 * self.n_ball):
 			mat_builder[i, i] += self.mass / dt / dt
 		for i in range(self.cnt_collision[None]):
-			pass
+			a, b = self.collision_pairs[i]
+			delta_x = ti.Vector([0., 0.])
+			rest_length = 0.
+			if b == -1: # collision with left boundary
+				delta_x += [self.positions[a][0] - self.min_corner[0], 0.]
+				rest_length += self.r_ball
+			elif b == -2: # collision with lower boundary
+				delta_x += [0., self.positions[a][1] - self.min_corner[0]]
+				rest_length += self.r_ball
+			elif b == -3: # collision with right boundary
+				delta_x += [self.positions[a][0] - self.max_corner[0], 0.]
+				rest_length += self.r_ball
+			elif b == -4: # collision with upper boundary
+				delta_x += [0., self.positions[a][1] - self.max_corner[0]]
+				rest_length += self.r_ball
+			elif b < self.n_ball: # collision with another ball
+				delta_x += self.positions[a] - self.positions[b]
+				rest_length += 2. * self.r_ball
+			else: # collision with wall
+				delta_x += self.positions[a] - self.positions[b - self.n_ball]
+				rest_length += self.r_ball + self.r_wall
+			outer_prod = ti.Matrix([[delta_x[0]], [delta_x[1]]]) @ ti.Matrix([[delta_x[0], delta_x[1]]]) / delta_x.norm() / delta_x.norm()
+			H_e = self.stiffness * outer_prod +\
+				self.stiffness * (1. - rest_length / delta_x.norm()) * (ti.Matrix([[1., 0.], [0., 1.]]) - outer_prod)
+			mat_builder[a * 2, a * 2] += H_e[0, 0]
+			mat_builder[a * 2, a * 2 + 1] += H_e[0, 1]
+			mat_builder[a * 2 + 1, a * 2] += H_e[1, 0]
+			mat_builder[a * 2 + 1, a * 2 + 1] += H_e[1, 1]
+			if 0 <= b < self.n_ball:
+				mat_builder[b * 2, b * 2] += H_e[0, 0]
+				mat_builder[b * 2, b * 2 + 1] += H_e[0, 1]
+				mat_builder[b * 2 + 1, b * 2] += H_e[1, 0]
+				mat_builder[b * 2 + 1, b * 2 + 1] += H_e[1, 1]
+				mat_builder[a * 2, b * 2] -= H_e[0, 0]
+				mat_builder[a * 2, b * 2 + 1] -= H_e[0, 1]
+				mat_builder[a * 2 + 1, b * 2] -= H_e[1, 0]
+				mat_builder[a * 2 + 1, b * 2 + 1] -= H_e[1, 1]
+				mat_builder[b * 2, a * 2] -= H_e[0, 0]
+				mat_builder[b * 2, a * 2 + 1] -= H_e[0, 1]
+				mat_builder[b * 2 + 1, a * 2] -= H_e[1, 0]
+				mat_builder[b * 2 + 1, a * 2 + 1] -= H_e[1, 1]
+	
+	@ti.kernel
+	def update_states(self, dt: float, delta_pos: ti.types.ndarray()):
+		for i in range(self.n_ball):
+			delta_i = delta_pos[i * 2:i * 2 + 2]
+			self.positions[i] += delta_i
+			self.velocities[i] = delta_i / dt
 	
 	def advance(self, dt: float):
 		self.get_collision_pairs()
 		self.calculate_vectors(dt, self.xk, self.yk, self.rhs)
 		mat_builder = ti.linalg.SparseMatrixBuilder(2 * self.n_ball, 2 * self.n_ball)
 		self.build_matrix(dt, mat_builder)
+		mat = mat_builder.build()
+		solver = ti.linalg.SparseSolver(solver_type='LLT')
+		solver.analyze_pattern(mat)
+		solver.factorize(mat)
+		delta_pos = solver.solve(self.rhs)
+		if not solver.info():
+			print('Warning: Failed to solve the linear system.')
+		self.update_states(dt, delta_pos)
 
 balls = Balls()
 balls.advance(1.)
