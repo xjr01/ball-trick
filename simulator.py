@@ -206,7 +206,7 @@ class Balls:
 			max_v = max(max_v, self.velocities[i].norm())
 		return min(self.r_ball, self.r_wall) * .1 / max_v
 
-balls = Balls(7, 60, 5, 14)
+balls = Balls(9, 50, 7, 14)
 print(balls.n_ball, balls.n_wall, balls.n_ball ** 2 + balls.n_ball * (balls.n_wall + 4))
 fps_limit = 1000
 time_step = 1 / fps_limit
