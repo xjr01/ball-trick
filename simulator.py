@@ -1,5 +1,5 @@
 import taichi as ti
-import math
+import os
 
 ti.init(arch=ti.cpu)
 
@@ -211,15 +211,23 @@ print(balls.n_ball, balls.n_wall, balls.n_ball ** 2 + balls.n_ball * (balls.n_wa
 fps_limit = 1000
 time_step = 1 / fps_limit
 
+save_frames = True
 win_size = 700
-window = ti.ui.Window(name='Ball trick', fps_limit=fps_limit, res=(win_size, win_size))
+window = ti.ui.Window(name='Ball trick', fps_limit=fps_limit, res=(win_size, win_size), show_window=not save_frames)
 canvas = window.get_canvas()
 
+if save_frames:
+	os.makedirs('output', exist_ok=True)
+frame_id = 0
 while window.running:
 	canvas.set_background_color((0.067, 0.184, 0.255))
 	canvas.circles(balls.positions, balls.r_ball, per_vertex_color=balls.colors)
 	canvas.circles(balls.wall_pos, balls.r_wall)
-	window.show()
+	if save_frames:
+		window.save_image(f'output/{frame_id}.png')
+	else:
+		window.show()
+	frame_id += 1
 	rest_t = time_step
 	while rest_t > 0.:
 		dt = balls.get_max_time_step()
