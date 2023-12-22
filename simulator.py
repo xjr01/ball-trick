@@ -1,5 +1,6 @@
 import taichi as ti
 import os
+import numpy as np
 
 ti.init(arch=ti.cpu)
 
@@ -205,6 +206,25 @@ class Balls:
 		for i in range(self.n_ball):
 			max_v = max(max_v, self.velocities[i].norm())
 		return min(self.r_ball, self.r_wall) * .1 / max_v
+	
+	@ti.kernel
+	def convert_states(self, positions: ti.types.ndarray(), colors: ti.types.ndarray(), wall_pos: ti.types.ndarray()):
+		for i in range(self.n_ball):
+			positions[i, 0] = self.positions[i][0]
+			positions[i, 1] = self.positions[i][1]
+			colors[i, 0] = self.colors[i][0]
+			colors[i, 1] = self.colors[i][1]
+			colors[i, 2] = self.colors[i][2]
+		for i in range(self.n_wall):
+			wall_pos[i, 0] = self.wall_pos[i][0]
+			wall_pos[i, 1] = self.wall_pos[i][1]
+	
+	def save_states(self, filename: str):
+		positions = np.zeros((self.n_ball, 2))
+		colors = np.zeros((self.n_ball, 3))
+		wall_pos = np.zeros((self.n_wall, 2))
+		self.convert_states(positions, colors, wall_pos)
+		np.savez(filename, positions=positions, r_ball=np.array(self.r_ball), colors=colors, wall_pos=wall_pos, r_wall=np.array(self.r_wall))
 
 balls = Balls(9, 50, 7, 14)
 print(balls.n_ball, balls.n_wall, balls.n_ball ** 2 + balls.n_ball * (balls.n_wall + 4))
@@ -219,12 +239,13 @@ canvas = window.get_canvas()
 if save_frames:
 	os.makedirs('output', exist_ok=True)
 frame_id = 0
-while window.running:
+for _ in range(8201):
 	canvas.set_background_color((0.067, 0.184, 0.255))
 	canvas.circles(balls.positions, balls.r_ball, per_vertex_color=balls.colors)
 	canvas.circles(balls.wall_pos, balls.r_wall)
 	if save_frames:
 		window.save_image(f'output/{frame_id}.png')
+		balls.save_states(f'output/states_{frame_id}.npz')
 	else:
 		window.show()
 	frame_id += 1
