@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+from concurrent.futures import ProcessPoolExecutor
 
 win_size = 700
 
@@ -44,36 +45,35 @@ n_pics = in_fps // out_fps
 
 needs_change = np.abs(last_frame.colors - final_colors).sum(axis=1).astype(bool)
 
-def simulated_annealing():
-	t_start, t_end, t_rate = 1e4, 1e-1, .9
-	def n_iter(t: float) -> int:
-		return 1 + int(2 // t)
+def evaluate_once(original_ext, extractors) -> tuple[int, int]:
+	if not extractors:
+		return (0, 0)
+	original_img = np.zeros_like(last_img, dtype=np.int32)
+	img = np.zeros_like(last_img, dtype=np.int32)
+	for o, e in zip(original_ext, extractors):
+		original_img += o.get_image_as_numpy()
+		img += e.get_image_as_numpy()
+	original_img //= len(extractors)
+	img //= len(extractors)
+	diff = np.abs(original_img - img)
+	print(diff.sum(), diff.astype(bool).sum())
+	return (diff.sum(), diff.astype(bool).sum())
 	
-	def evaluate(change_frame: np.ndarray) -> float:
-		def evaluate_once(original_ext, extractors) -> tuple[int, int]:
-			if not extractors:
-				return (0, 0)
-			original_img = np.zeros_like(last_img, dtype=np.int32)
-			img = np.zeros_like(last_img, dtype=np.int32)
-			for o, e in zip(original_ext, extractors):
-				original_img += o.get_image_as_numpy()
-				img += e.get_image_as_numpy()
-			original_img //= len(extractors)
-			img //= len(extractors)
-			diff = np.abs(original_img - img)
-			return (diff.sum(), diff.astype(bool).sum())
-		
-		ball_id = np.argsort(change_frame)
-		original_ext, extractors = [], []
-		really_changed = False
-		err_sum, err_cnt = 0, 0
+def evaluate(change_frame: np.ndarray) -> float:
+	ball_id = np.argsort(change_frame)
+	original_ext, extractors = [], []
+	really_changed = False
+	err_sum, err_cnt = 0, 0
+	with ProcessPoolExecutor(max_workers=55) as executor:
+		futures = []
 		for i in range(last_frame.n_ball):
 			ths_bin, lst_bin = change_frame[ball_id[i]] // n_pics, change_frame[ball_id[i - 1]] // n_pics
 			if not i or ths_bin != lst_bin:
 				if really_changed:
-					ths_sum, ths_cnt = evaluate_once(original_ext, extractors)
-					err_sum += ths_sum
-					err_cnt += ths_cnt
+					futures.append(executor.submit(evaluate_once, original_ext, extractors))
+					# ths_sum, ths_cnt = evaluate_once(original_ext, extractors)
+					# err_sum += ths_sum
+					# err_cnt += ths_cnt
 				original_ext = [ImageExtractor(j) for j in range(ths_bin * n_pics, (ths_bin + 1) * n_pics)]
 				extractors = [ImageExtractor(j) for j in range(ths_bin * n_pics, (ths_bin + 1) * n_pics)]
 				really_changed = False
@@ -82,12 +82,22 @@ def simulated_annealing():
 				for j in range(change_frame[ball_id[i]] - ths_bin * n_pics, n_pics):
 					extractors[j].colors[ball_id[i]] = final_colors[ball_id[i]]
 		if really_changed:
-			ths_sum, ths_cnt = evaluate_once(original_ext, extractors)
+			futures.append(executor.submit(evaluate_once, original_ext, extractors))
+			# ths_sum, ths_cnt = evaluate_once(original_ext, extractors)
+			# err_sum += ths_sum
+			# err_cnt += ths_cnt
+		for future in futures:
+			ths_sum, ths_cnt = future.result()
 			err_sum += ths_sum
 			err_cnt += ths_cnt
-		
-		assert err_cnt != 0
-		return err_sum / err_cnt
+	
+	assert err_cnt != 0
+	return err_sum / err_cnt
+
+def simulated_annealing():
+	t_start, t_end, t_rate = 1e4, 1e-1, .9
+	def n_iter(t: float) -> int:
+		return 1 + int(2 // t)
 	
 	best_change_frame = change_frame = np.random.randint(0, N_frame, last_frame.n_ball)
 	min_cost = cost = evaluate(change_frame)
@@ -117,22 +127,23 @@ def simulated_annealing():
 	fd.close()
 	return best_change_frame, min_cost
 
-# Generate video
-change_frame = simulated_annealing()[0]
-ball_id = np.argsort(change_frame)
-cur_ball = 0
-colors = last_frame.colors
-fourcc = cv2.VideoWriter_fourcc(*'X264')
-video_out = cv2.VideoWriter('output/magic.mp4', fourcc, 30, (win_size, win_size))
-blurred = np.zeros_like(last_img, dtype=np.int32)
-for i in range(N_frame):
-	while change_frame[ball_id[cur_ball]] == i:
-		colors[ball_id[cur_ball]] = final_colors[ball_id[cur_ball]]
-		cur_ball += 1
-	e = ImageExtractor(i)
-	e.colors = colors
-	blurred += e.get_image_as_numpy()
-	if i % n_pics == n_pics - 1:
-		video_out.write((blurred // n_pics).astype(np.uint8))
-		blurred = np.zeros_like(last_img, dtype=np.int32)
-video_out.release()
+if __name__ == '__main__':
+	# Generate video
+	change_frame = simulated_annealing()[0]
+	ball_id = np.argsort(change_frame)
+	cur_ball = 0
+	colors = last_frame.colors
+	fourcc = cv2.VideoWriter_fourcc(*'X264')
+	video_out = cv2.VideoWriter('output/magic.mp4', fourcc, 30, (win_size, win_size))
+	blurred = np.zeros_like(last_img, dtype=np.int32)
+	for i in range(N_frame):
+		while change_frame[ball_id[cur_ball]] == i:
+			colors[ball_id[cur_ball]] = final_colors[ball_id[cur_ball]]
+			cur_ball += 1
+		e = ImageExtractor(i)
+		e.colors = colors
+		blurred += e.get_image_as_numpy()
+		if i % n_pics == n_pics - 1:
+			video_out.write((blurred // n_pics).astype(np.uint8))
+			blurred = np.zeros_like(last_img, dtype=np.int32)
+	video_out.release()
