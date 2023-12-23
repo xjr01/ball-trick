@@ -17,6 +17,9 @@ class ImageExtractor:
 		self.colors = data['colors']
 		self.wall_pos = data['wall_pos']
 		self.r_wall = data['r_wall']
+		
+		self.n_ball = self.positions.shape[0]
+		self.n_wall = self.wall_pos.shape[0]
 
 		self.ti_positions = ti.Vector.field(2, dtype=ti.f64, shape=(self.positions.shape[0],))
 		self.ti_colors = ti.Vector.field(3, dtype=ti.f64, shape=(self.colors.shape[0],))
@@ -46,12 +49,10 @@ class ImageExtractor:
 		img = np.round(img[:, ::-1, 2::-1] * 255).astype(np.uint8).transpose(1, 0, 2)
 		return img
 
-extractors = [ImageExtractor(id=i) for i in range(324, 424)]
-img = np.zeros_like(extractors[0].get_image_as_numpy(), dtype=np.int64)
-for e in extractors:
-	img += e.get_image_as_numpy()
-img = (img / len(extractors)).astype(np.uint8)
 
-cv2.imshow('image', img)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+last_frame = ImageExtractor(id=8200)
+# Get final color
+color_list = np.array([[255, 0, 0], [255, 165, 0], [255, 255, 0], [0, 255, 0], [0, 0, 255], [160, 32, 240]], dtype=np.float64) / 255.
+final_colors = np.zeros_like(last_frame.colors)
+for i in range(last_frame.n_ball):
+	final_colors[i] = color_list[int((last_frame.positions[i][1] - last_frame.r_ball * .5) // (np.sqrt(3.) * last_frame.r_ball)) % len(color_list)]
