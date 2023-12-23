@@ -114,7 +114,6 @@ def simulated_annealing():
 	min_cost = cost = evaluate(change_frame)
 	fd = open('output_log.txt', 'w')
 	fd.write(f'cost: {cost}\n')
-	fd.close()
 	
 	t = t_start
 	while t >= t_end:
