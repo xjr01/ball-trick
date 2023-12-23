@@ -88,7 +88,7 @@ def evaluate(change_frame: np.ndarray) -> float:
 	return err_sum / err_cnt
 
 def simulated_annealing():
-	t_start, t_end, t_rate = 1e4, 1e-1, .9
+	t_start, t_end, t_rate = 1e4, 1e-3, .9
 	def n_iter(t: float) -> int:
 		return 1 + int(2 // t)
 	
