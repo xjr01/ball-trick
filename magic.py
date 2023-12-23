@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+from copy import deepcopy
 from concurrent.futures import ProcessPoolExecutor
 
 win_size = 700
@@ -45,9 +46,13 @@ n_pics = in_fps // out_fps
 
 needs_change = np.abs(last_frame.colors - final_colors).sum(axis=1).astype(bool)
 
-def evaluate_once(original_ext, extractors) -> tuple[int, int]:
-	if not extractors:
-		return (0, 0)
+def evaluate_once(bin_id, events) -> tuple[int, int]:
+	extractors = [ImageExtractor(j) for j in range(bin_id * n_pics, (bin_id + 1) * n_pics)]
+	original_ext = deepcopy(extractors)
+	for event in events:
+		for j in range(event[1], n_pics):
+			extractors[j].colors[event[0]] = final_colors[event[0]]
+	
 	original_img = np.zeros_like(last_img, dtype=np.int32)
 	img = np.zeros_like(last_img, dtype=np.int32)
 	for o, e in zip(original_ext, extractors):
@@ -56,38 +61,26 @@ def evaluate_once(original_ext, extractors) -> tuple[int, int]:
 	original_img //= len(extractors)
 	img //= len(extractors)
 	diff = np.abs(original_img - img)
-	print(diff.sum(), diff.astype(bool).sum())
 	return (diff.sum(), diff.astype(bool).sum())
 	
 def evaluate(change_frame: np.ndarray) -> float:
-	ball_id = np.argsort(change_frame)
-	original_ext, extractors = [], []
-	really_changed = False
+	events = dict()
+	for i in range(last_frame.n_ball):
+		bin_id = change_frame[i] // n_pics
+		if not (bin_id in events):
+			events[bin_id] = []
+		events[bin_id].append((i, change_frame[i] - bin_id * n_pics))
+	
 	err_sum, err_cnt = 0, 0
 	with ProcessPoolExecutor(max_workers=55) as executor:
 		futures = []
-		for i in range(last_frame.n_ball):
-			ths_bin, lst_bin = change_frame[ball_id[i]] // n_pics, change_frame[ball_id[i - 1]] // n_pics
-			if not i or ths_bin != lst_bin:
-				if really_changed:
-					futures.append(executor.submit(evaluate_once, original_ext, extractors))
-					# ths_sum, ths_cnt = evaluate_once(original_ext, extractors)
-					# err_sum += ths_sum
-					# err_cnt += ths_cnt
-				original_ext = [ImageExtractor(j) for j in range(ths_bin * n_pics, (ths_bin + 1) * n_pics)]
-				extractors = [ImageExtractor(j) for j in range(ths_bin * n_pics, (ths_bin + 1) * n_pics)]
-				really_changed = False
-			if needs_change[ball_id[i]]:
-				really_changed = True
-				for j in range(change_frame[ball_id[i]] - ths_bin * n_pics, n_pics):
-					extractors[j].colors[ball_id[i]] = final_colors[ball_id[i]]
-		if really_changed:
-			futures.append(executor.submit(evaluate_once, original_ext, extractors))
-			# ths_sum, ths_cnt = evaluate_once(original_ext, extractors)
+		for i in events.items():
+			futures.append(executor.submit(evaluate_once, i[0], i[1]))
+			# ths_sum, ths_cnt = evaluate_once(*i)
 			# err_sum += ths_sum
 			# err_cnt += ths_cnt
-		for future in futures:
-			ths_sum, ths_cnt = future.result()
+		for f in futures:
+			ths_sum, ths_cnt = f.result()
 			err_sum += ths_sum
 			err_cnt += ths_cnt
 	
