@@ -1,57 +1,36 @@
-import taichi as ti
 import numpy as np
 import cv2
 
-ti.init(ti.cpu)
-
 win_size = 700
-window = ti.ui.Window(name='Ball trick', fps_limit=30, res=(win_size, win_size), show_window=False)
-canvas = window.get_canvas()
 
-@ti.data_oriented
 class ImageExtractor:
 	def __init__(self, id=None, filename=None):
 		data = np.load(f'output/states_{id}.npz' if id is not None else filename)
-		self.positions = data['positions']
-		self.r_ball = data['r_ball']
-		self.colors = data['colors']
-		self.wall_pos = data['wall_pos']
-		self.r_wall = data['r_wall']
+		self.positions = np.round(data['positions'] * win_size).astype(int)
+		self.r_ball = int(round(data['r_ball'].item() * win_size))
+		self.colors = np.round(data['colors'] * 255).astype(np.uint8)
+		self.wall_pos = np.round(data['wall_pos'] * win_size).astype(int)
+		self.r_wall = int(round(data['r_wall'].item() * win_size))
 		
 		self.n_ball = self.positions.shape[0]
 		self.n_wall = self.wall_pos.shape[0]
+		
+		self.bkg_img = np.array((0.067, 0.184, 0.255)) * 255 + np.zeros((win_size, win_size, 3))
+		self.bkg_img = np.round(self.bkg_img).astype(np.uint8)
 
-	@ti.kernel
-	def convert_to_fields(self, positions: ti.types.ndarray(dtype=ti.f64), colors: ti.types.ndarray(dtype=ti.f64), wall_pos: ti.types.ndarray(dtype=ti.f64)):
-		for i in range(positions.shape[0]):
-			ti_positions[i][0] = positions[i, 0]
-			ti_positions[i][1] = positions[i, 1]
-		for i in range(colors.shape[0]):
-			ti_colors[i][0] = colors[i, 0]
-			ti_colors[i][1] = colors[i, 1]
-			ti_colors[i][2] = colors[i, 2]
-		for i in range(wall_pos.shape[0]):
-			ti_wall_pos[i][0] = wall_pos[i, 0]
-			ti_wall_pos[i][1] = wall_pos[i, 1]
-	
 	def get_image_as_numpy(self):
-		self.convert_to_fields(self.positions, self.colors, self.wall_pos)
-
-		canvas.set_background_color((0.067, 0.184, 0.255))
-		canvas.circles(ti_positions, self.r_ball.item(), per_vertex_color=ti_colors)
-		canvas.circles(ti_wall_pos, self.r_wall.item())
-		img = window.get_image_buffer_as_numpy()
-
-		img = np.round(img[:, ::-1, 2::-1] * 255).astype(np.uint8).transpose(1, 0, 2)
+		img = self.bkg_img.copy()
+		for p, c in zip(self.positions, self.colors):
+			cv2.circle(img, p, self.r_ball, (c[0].item(), c[1].item(), c[2].item()), -1)
+		for p in self.wall_pos:
+			cv2.circle(img, p, self.r_wall, (128, 128, 128), -1)
+		img = img[::-1, :, 2::-1]
 		return img
 
 
 N_frame = 8200
 
 last_frame = ImageExtractor(N_frame - 1)
-ti_positions = ti.Vector.field(2, dtype=ti.f64, shape=(last_frame.positions.shape[0],))
-ti_colors = ti.Vector.field(3, dtype=ti.f64, shape=(last_frame.colors.shape[0],))
-ti_wall_pos = ti.Vector.field(2, dtype=ti.f64, shape=(last_frame.wall_pos.shape[0],))
 last_img = last_frame.get_image_as_numpy()
 # Get final color
 color_list = np.array([[255, 0, 0], [255, 165, 0], [255, 255, 0], [0, 255, 0], [0, 0, 255], [160, 32, 240]], dtype=np.float64) / 255.
@@ -112,8 +91,8 @@ def simulated_annealing():
 	
 	best_change_frame = change_frame = np.random.randint(0, N_frame, last_frame.n_ball)
 	min_cost = cost = evaluate(change_frame)
-	# fd = open('output_log.txt', 'w')
-	# fd.write(f'cost: {cost}\n')
+	fd = open('output/cost.txt', 'w')
+	fd.write(f'{cost}\n')
 	print('cost:', cost)
 	
 	t = t_start
@@ -123,7 +102,7 @@ def simulated_annealing():
 			# Get neighboring solution
 			new_change_frame = (change_frame + np.random.randint(-100, 101, last_frame.n_ball)).clip(0, N_frame - 1)
 			new_cost = evaluate(new_change_frame)
-			# fd.write(f'cost: {new_cost}\n')
+			fd.write(f'{new_cost}\n')
 			print('cost:', new_cost)
 			if new_cost < min_cost:
 				best_change_frame = new_change_frame
@@ -135,7 +114,7 @@ def simulated_annealing():
 				cost = new_cost
 		t *= t_rate
 	
-	# fd.close()
+	fd.close()
 	return best_change_frame, min_cost
 
 # Generate video
