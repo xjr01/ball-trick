@@ -66,7 +66,7 @@ n_pics = in_fps // out_fps
 needs_change = np.abs(last_frame.colors - final_colors).sum(axis=1).astype(bool)
 
 def simulated_annealing():
-	t_start, t_end, t_rate = 1e4, 1e-5, .99
+	t_start, t_end, t_rate = 1e4, 1e-1, .9
 	def n_iter(t: float) -> int:
 		return 1 + int(2 // t)
 	
@@ -74,8 +74,8 @@ def simulated_annealing():
 		def evaluate_once(original_ext, extractors) -> tuple[int, int]:
 			if not extractors:
 				return (0, 0)
-			original_img = np.zeros_like(last_img, dtype=np.int64)
-			img = np.zeros_like(last_img, dtype=np.int64)
+			original_img = np.zeros_like(last_img, dtype=np.int32)
+			img = np.zeros_like(last_img, dtype=np.int32)
 			for o, e in zip(original_ext, extractors):
 				original_img += o.get_image_as_numpy()
 				img += e.get_image_as_numpy()
@@ -112,8 +112,9 @@ def simulated_annealing():
 	
 	best_change_frame = change_frame = np.random.randint(0, N_frame, last_frame.n_ball)
 	min_cost = cost = evaluate(change_frame)
-	fd = open('output_log.txt', 'w')
-	fd.write(f'cost: {cost}\n')
+	# fd = open('output_log.txt', 'w')
+	# fd.write(f'cost: {cost}\n')
+	print('cost:', cost)
 	
 	t = t_start
 	while t >= t_end:
@@ -122,17 +123,19 @@ def simulated_annealing():
 			# Get neighboring solution
 			new_change_frame = (change_frame + np.random.randint(-100, 101, last_frame.n_ball)).clip(0, N_frame - 1)
 			new_cost = evaluate(new_change_frame)
-			fd.write(f'cost: {new_cost}\n')
+			# fd.write(f'cost: {new_cost}\n')
+			print('cost:', new_cost)
 			if new_cost < min_cost:
 				best_change_frame = new_change_frame
 				min_cost = new_cost
+				np.savez('output/change_frame.npz', change_frame=best_change_frame, cost=np.array(min_cost))
 			delta = new_cost - cost
-			if delta > 0 or np.random.rand() < np.exp(delta / t):
+			if delta < 0 or np.random.rand() < np.exp(-delta / t):
 				change_frame = new_change_frame
 				cost = new_cost
 		t *= t_rate
 	
-	fd.close()
+	# fd.close()
 	return best_change_frame, min_cost
 
 # Generate video
@@ -142,7 +145,7 @@ cur_ball = 0
 colors = last_frame.colors
 fourcc = cv2.VideoWriter_fourcc(*'X264')
 video_out = cv2.VideoWriter('output/magic.mp4', fourcc, 30, (win_size, win_size))
-blurred = np.zeros_like(last_img, dtype=np.int64)
+blurred = np.zeros_like(last_img, dtype=np.int32)
 for i in range(N_frame):
 	while change_frame[ball_id[cur_ball]] == i:
 		colors[ball_id[cur_ball]] = final_colors[ball_id[cur_ball]]
@@ -152,5 +155,5 @@ for i in range(N_frame):
 	blurred += e.get_image_as_numpy()
 	if i % n_pics == n_pics - 1:
 		video_out.write((blurred // n_pics).astype(np.uint8))
-		blurred = np.zeros_like(last_img, dtype=np.int64)
+		blurred = np.zeros_like(last_img, dtype=np.int32)
 video_out.release()
