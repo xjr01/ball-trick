@@ -5,7 +5,7 @@ from magic import ImageExtractor
 N_frame = 8200
 win_size = 700
 
-last_frame = ImageExtractor(N_frame - 1)
+last_frame = ImageExtractor(N_frame - 1, for_optimize=False)
 last_img = last_frame.get_image_as_numpy()
 # Get final color
 color_list = np.array([[255, 0, 0], [255, 165, 0], [255, 255, 0], [0, 255, 0], [0, 0, 255], [160, 32, 240]], dtype=np.uint8)
@@ -32,7 +32,7 @@ for i in range(N_frame):
 	while cur_ball < ball_id.shape[0] and change_frame[ball_id[cur_ball]] == i:
 		colors[ball_id[cur_ball]] = final_colors[ball_id[cur_ball]]
 		cur_ball += 1
-	e = ImageExtractor(i)
+	e = ImageExtractor(i, for_optimize=False)
 	e.colors = colors
 	blurred += e.get_image_as_numpy()
 	if i % n_pics == n_pics - 1:

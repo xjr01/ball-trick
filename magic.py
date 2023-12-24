@@ -6,13 +6,13 @@ from concurrent.futures import ProcessPoolExecutor
 win_size = 700
 
 class ImageExtractor:
-	def __init__(self, id=None, filename=None):
+	def __init__(self, id=None, filename=None, for_optimize=True):
 		data = np.load(f'output/states_{id}.npz' if id is not None else filename)
 		self.positions = np.round(data['positions'] * win_size).astype(int)
-		self.r_ball = int(round(data['r_ball'].item() * win_size)) - 1
+		self.r_ball = int(round(data['r_ball'].item() * win_size)) - (1 if for_optimize else 0)
 		self.colors = np.round(data['colors'] * 255).astype(np.uint8)
 		self.wall_pos = np.round(data['wall_pos'] * win_size).astype(int)
-		self.r_wall = int(round(data['r_wall'].item() * win_size)) - 1
+		self.r_wall = int(round(data['r_wall'].item() * win_size)) - (1 if for_optimize else 0)
 		
 		self.n_ball = self.positions.shape[0]
 		self.n_wall = self.wall_pos.shape[0]
