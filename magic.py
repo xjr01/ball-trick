@@ -81,7 +81,7 @@ def simulated_annealing():
 	def n_iter(t: float) -> int:
 		return 1 + int(2 // t)
 	
-	best_change_frame = change_frame = np.random.randint(0, N_frame - n_pics, last_frame.n_ball)
+	best_change_frame = change_frame = np.random.randint((N_frame - n_pics) // 16, (N_frame - n_pics) // 3, last_frame.n_ball)
 	min_cost = cost = evaluate(change_frame)
 	fd = open('output/cost.txt', 'w')
 	fd.write(f'{cost}\n')
@@ -92,7 +92,7 @@ def simulated_annealing():
 		n = n_iter(t)
 		for iter in range(n):
 			# Get neighboring solution
-			new_change_frame = (change_frame + np.random.randint(-100, 101, last_frame.n_ball)) % (N_frame - n_pics)
+			new_change_frame = (change_frame + np.random.randint(-10, 11, last_frame.n_ball) * (np.random.rand(last_frame.n_ball) < .2)) % (N_frame - n_pics)
 			new_cost = evaluate(new_change_frame)
 			if new_cost < min_cost:
 				best_change_frame = new_change_frame
