@@ -94,8 +94,6 @@ def simulated_annealing():
 			# Get neighboring solution
 			new_change_frame = (change_frame + np.random.randint(-100, 101, last_frame.n_ball)) % (N_frame - n_pics)
 			new_cost = evaluate(new_change_frame)
-			fd.write(f'{new_cost}\n')
-			print('cost:', new_cost)
 			if new_cost < min_cost:
 				best_change_frame = new_change_frame
 				min_cost = new_cost
@@ -104,6 +102,8 @@ def simulated_annealing():
 			if delta < 0 or np.random.rand() < np.exp(-delta / t):
 				change_frame = new_change_frame
 				cost = new_cost
+				fd.write(f'{new_cost}\n')
+				print('cost:', new_cost)
 		t *= t_rate
 	
 	fd.close()
