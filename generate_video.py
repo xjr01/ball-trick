@@ -19,7 +19,7 @@ cost = data['cost'].item()
 ball_id = np.argsort(change_frame)
 print('cost:', cost)
 
-in_fps, out_fps = 1000, 50
+in_fps, out_fps = 2000, 50
 n_pics = in_fps // out_fps
 
 cnt_frame = 0
