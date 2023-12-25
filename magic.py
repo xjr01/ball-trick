@@ -36,9 +36,94 @@ last_frame = ImageExtractor(N_frame - 1)
 last_img = last_frame.get_image_as_numpy()
 # Get final color
 color_list = np.array([[255, 0, 0], [255, 165, 0], [255, 255, 0], [0, 255, 0], [0, 0, 255], [160, 32, 240]], dtype=np.uint8)
-final_colors = np.zeros_like(last_frame.colors)
-for i in range(last_frame.n_ball):
-	final_colors[i] = color_list[int((last_frame.positions[i][1] - last_frame.r_ball * .5) // (np.sqrt(3.) * last_frame.r_ball)) % len(color_list)]
+
+def rainbow():
+	final_colors = np.zeros_like(last_frame.colors)
+	for i in range(last_frame.n_ball):
+		final_colors[i] = color_list[int((last_frame.positions[i][1] - last_frame.r_ball * .5) // (np.sqrt(3.) * last_frame.r_ball)) % len(color_list)]
+	return final_colors
+
+def letters_IOMA():
+	final_colors = last_frame.colors.copy()
+	final_colors[200:250] = color_list[-3] # blue -> green
+	blue_poses = np.array([
+		[11, 1],
+		[12, 2],
+		[13, 3],
+		[14, 4],
+		[15, 5],
+		[16, 6],
+		[17, 7],
+		[18, 6],
+		[19, 5],
+		[20, 4],
+		[21, 3],
+		[22, 2],
+		[23, 1],
+		[15, 3],
+		[17, 3],
+		[19, 3], # A
+		[27, 1],
+		[28, 2],
+		[29, 3],
+		[30, 4],
+		[31, 5],
+		[32, 6],
+		[33, 7],
+		[34, 6],
+		[35, 5],
+		[36, 4],
+		[37, 5],
+		[38, 6],
+		[39, 7],
+		[40, 6],
+		[41, 5],
+		[42, 4],
+		[43, 3],
+		[44, 2],
+		[45, 1], # M
+		[48, 4],
+		[49, 5],
+		[50, 6],
+		[51, 7],
+		[53, 7],
+		[55, 7],
+		[57, 7],
+		[58, 6],
+		[59, 5],
+		[60, 4],
+		[59, 3],
+		[58, 2],
+		[57, 1],
+		[55, 1],
+		[53, 1],
+		[51, 1],
+		[50, 2],
+		[49, 3], # O
+		[65, 1],
+		[65, 3],
+		[65, 5],
+		[65, 7],
+		[66, 2],
+		[66, 4],
+		[66, 6],
+		[67, 1],
+		[67, 3],
+		[67, 5],
+		[67, 7],
+		[68, 2],
+		[68, 4],
+		[68, 6]  # I
+	], dtype=float)
+	blue_poses[:, 0] += 12
+	blue_poses[:, 0] = win_size - blue_poses[:, 0] * (last_frame.r_ball + 1)
+	blue_poses[:, 1] = (1. + blue_poses[:, 1] * np.sqrt(3.)) * (last_frame.r_ball + 1)
+	for i in range(last_frame.n_ball):
+		if (((last_frame.positions[i] - blue_poses) ** 2).sum(axis=1) < last_frame.r_ball ** 2.).any():
+			final_colors[i] = color_list[-2] # blue
+	return final_colors
+
+final_colors = letters_IOMA()
 
 # Let the magic begin!
 in_fps, out_fps = 1000, 50
