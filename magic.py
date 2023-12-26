@@ -40,7 +40,7 @@ color_list = np.array([[255, 0, 0], [255, 165, 0], [255, 255, 0], [0, 255, 0], [
 def rainbow():
 	final_colors = np.zeros_like(last_frame.colors)
 	for i in range(last_frame.n_ball):
-		final_colors[i] = color_list[int((last_frame.positions[i][1] - last_frame.r_ball * .5) // (np.sqrt(3.) * last_frame.r_ball)) % len(color_list)]
+		final_colors[i] = color_list[int((last_frame.positions[i][1] - (last_frame.r_ball + 1) * .5) // (np.sqrt(3.) * (last_frame.r_ball + 1))) % len(color_list)]
 	return final_colors
 
 def letters_IOMA():
