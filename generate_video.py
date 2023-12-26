@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from magic import ImageExtractor
+from magic import ImageExtractor, rainbow, letters_IOMA
 
 N_frame = 8200
 win_size = 700
@@ -9,9 +9,7 @@ last_frame = ImageExtractor(N_frame - 1, for_optimize=False)
 last_img = last_frame.get_image_as_numpy()
 # Get final color
 color_list = np.array([[255, 0, 0], [255, 165, 0], [255, 255, 0], [0, 255, 0], [0, 0, 255], [160, 32, 240]], dtype=np.uint8)
-final_colors = np.zeros_like(last_frame.colors)
-for i in range(last_frame.n_ball):
-	final_colors[i] = color_list[int((last_frame.positions[i][1] - last_frame.r_ball * .5) // (np.sqrt(3.) * last_frame.r_ball)) % len(color_list)]
+final_colors = letters_IOMA()
 
 data = np.load('output/change_frame.npz')
 change_frame = data['change_frame']
