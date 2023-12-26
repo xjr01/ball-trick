@@ -110,10 +110,7 @@ def letters_IOMA():
 		[67, 1],
 		[67, 3],
 		[67, 5],
-		[67, 7],
-		[68, 2],
-		[68, 4],
-		[68, 6]  # I
+		[67, 7]  # I
 	], dtype=float)
 	blue_poses[:, 0] += 12
 	blue_poses[:, 0] = win_size - blue_poses[:, 0] * (last_frame.r_ball + 1)
