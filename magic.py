@@ -23,9 +23,9 @@ class ImageExtractor:
 	def get_image_as_numpy(self):
 		img = self.bkg_img.copy()
 		for p, c in zip(self.positions, self.colors):
-			cv2.circle(img, p, self.r_ball, (c[0].item(), c[1].item(), c[2].item()), -1)
+			cv2.circle(img, tuple(p), self.r_ball, (c[0].item(), c[1].item(), c[2].item()), -1)
 		for p in self.wall_pos:
-			cv2.circle(img, p, self.r_wall, (128, 128, 128), -1)
+			cv2.circle(img, tuple(p), self.r_wall, (128, 128, 128), -1)
 		img = img[::-1, :, 2::-1]
 		return img
 
@@ -120,7 +120,8 @@ def letters_IOMA():
 			final_colors[i] = color_list[-2] # blue
 	return final_colors
 
-final_colors = letters_IOMA()
+with open('settings.json', 'r') as fd:
+	final_colors = eval(eval(fd.read())['case'] + '()')
 
 # Let the magic begin!
 in_fps, out_fps = 1000, 50

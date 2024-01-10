@@ -9,7 +9,8 @@ last_frame = ImageExtractor(N_frame - 1, for_optimize=False)
 last_img = last_frame.get_image_as_numpy()
 # Get final color
 color_list = np.array([[255, 0, 0], [255, 165, 0], [255, 255, 0], [0, 255, 0], [0, 0, 255], [160, 32, 240]], dtype=np.uint8)
-final_colors = letters_IOMA()
+with open('settings.json', 'r') as fd:
+	final_colors = eval(eval(fd.read())['case'] + '()')
 
 data = np.load('output/change_frame.npz')
 change_frame = data['change_frame']
