@@ -2,9 +2,7 @@
 
 Simulation of balls falling through a Pachinko-style machine. But there seem to be something weird...
 
-<img src="figures/rainbow_0.png" style="zoom:33%;" /><img src="figures/rainbow_80.png" style="zoom:33%;" /><img src="figures/rainbow_100.png" style="zoom:33%;" /><img src="figures/rainbow_204.png" style="zoom:33%;" />
-
-<img src="figures/letter_0.png" style="zoom:33%;" /><img src="figures/letter_80.png" style="zoom:33%;" /><img src="figures/letter_100.png" style="zoom:33%;" /><img src="figures/letter_204.png" style="zoom:33%;" />
+![](figures/teaser.png)
 
 ## Prerequisites
 
