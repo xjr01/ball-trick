@@ -79,7 +79,7 @@ class Balls:
 			if (self.positions[i] + dt * self.velocities[i])[1] + self.r_ball > self.max_corner[1]:
 				self.collision_pairs[self.cnt_collision[None]] = [i, -4] # upper boundary
 				self.cnt_collision[None] += 1
-		
+	
 	@ti.kernel
 	def calculate_vectors(self, dt: float, xk: ti.types.ndarray(), yk: ti.types.ndarray(), rhs: ti.types.ndarray()):
 		for i in range(self.n_ball):
